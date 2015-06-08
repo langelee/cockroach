@@ -145,7 +145,6 @@ func verifyFileInfo(info os.FileInfo) (Level, error) {
 		return INFO, util.Errorf("not a regular file")
 	}
 	matches := logFileRE.FindStringSubmatch(info.Name())
-	//	fmt.Printf("!!!!! name:%d, matches:%+v\n", info.Name(), matches)
 	if matches == nil || len(matches) < 1 {
 		return INFO, util.Errorf("not a log file")
 	}
@@ -186,11 +185,9 @@ func ListLogFiles() ([]FileInfo, error) {
 		if err != nil {
 			return results, err
 		}
-		fmt.Println("!!!!!")
 		for _, info := range infos {
 			level, err := verifyFileInfo(info)
-			fmt.Printf("!!!!! - name:%v level:%v err:%v\n", info.Name(), level, err)
-			if err != nil {
+			if err == nil {
 				results = append(results, FileInfo{
 					Name:         info.Name(),
 					SizeBytes:    info.Size(),

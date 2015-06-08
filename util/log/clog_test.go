@@ -334,6 +334,7 @@ func TestListLogFiles(t *testing.T) {
 	}
 	var foundInfo, foundWarn bool
 	for _, r := range results {
+		fmt.Printf("Results: Name:%v\n", r.Name)
 		if r.Name == infoName {
 			foundInfo = true
 		}
