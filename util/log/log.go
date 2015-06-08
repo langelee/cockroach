@@ -19,6 +19,27 @@ package log
 
 import "golang.org/x/net/context"
 
+// Log Level Enum.
+type Level int
+
+const (
+	INFO Level = iota
+	WARNING
+	ERROR
+	FATAL
+)
+
+var levels = [...]string{
+	"INFO",
+	"WARNING",
+	"ERROR",
+	"FATAL",
+}
+
+func (level Level) String() string {
+	return levels[level]
+}
+
 func init() {
 	// TODO(tschottdorf) this should go to our logger. Currently this will log
 	// with clog (=glog) format.

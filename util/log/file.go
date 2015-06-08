@@ -139,14 +139,25 @@ func create(tag string, t time.Time) (f *os.File, filename string, err error) {
 
 // verifyFileInfo verifies that the file specified by filename is a
 // regular file and filename matches the expected filename pattern.
-// Returns nil on success; otherwise error.
-func verifyFileInfo(info os.FileInfo) error {
+// Returns the log level on success; otherwise error.
+func verifyFileInfo(info os.FileInfo) (Level, error) {
 	if info.Mode()&os.ModeType != 0 {
-		return util.Errorf("not a regular file")
-	} else if !logFileRE.MatchString(info.Name()) {
-		return util.Errorf("not a log file")
+		return INFO, util.Errorf("not a regular file")
 	}
-	return nil
+	matches := logFileRE.FindStringSubmatch(info.Name())
+	//	fmt.Printf("!!!!! name:%d, matches:%+v\n", info.Name(), matches)
+	if matches == nil || len(matches) < 1 {
+		return INFO, util.Errorf("not a log file")
+	}
+
+	switch matches[1] {
+	case "ERRROR":
+		return ERROR, nil
+	case "WARNING":
+		return WARNING, nil
+	default:
+		return INFO, nil
+	}
 }
 
 func verifyFile(filename string) error {
@@ -154,7 +165,8 @@ func verifyFile(filename string) error {
 	if err != nil {
 		return err
 	}
-	return verifyFileInfo(info)
+	_, err = verifyFileInfo(info)
+	return err
 }
 
 // A FileInfo holds the filename and size of a log file.
@@ -162,6 +174,7 @@ type FileInfo struct {
 	Name         string // base name
 	SizeBytes    int64
 	ModTimeNanos int64 // most recent mode time in unix nanos
+	Level        string
 }
 
 // ListLogFiles returns a slice of FileInfo structs for each log file
@@ -173,12 +186,16 @@ func ListLogFiles() ([]FileInfo, error) {
 		if err != nil {
 			return results, err
 		}
+		fmt.Println("!!!!!")
 		for _, info := range infos {
-			if verifyFileInfo(info) == nil {
+			level, err := verifyFileInfo(info)
+			fmt.Printf("!!!!! - name:%v level:%v err:%v\n", info.Name(), level, err)
+			if err != nil {
 				results = append(results, FileInfo{
 					Name:         info.Name(),
 					SizeBytes:    info.Size(),
 					ModTimeNanos: info.ModTime().UnixNano(),
+					Level:        level.String(),
 				})
 			}
 		}

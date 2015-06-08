@@ -51,13 +51,16 @@ const (
 	statusLocalKeyPrefix = statusKeyPrefix + "local/"
 
 	// statusLocalLogKeyPrefix exposes a list of log files for the node.
-	// logs -> lists available log files
-	// logs/ -> lists available log files
-	// logs/{file} -> fetches contents of named log
-	statusLocalLogKeyPrefix = statusLocalKeyPrefix + "logs/"
-	// statusLocalLogKeyPattern is the pattern to match
-	// logs/{file}
-	statusLocalLogKeyPattern = statusLocalLogKeyPrefix + ":file"
+	// log               -> is the equivalent to log/info
+	// logs/             -> is the equivalent to log/info
+	// logs/{level}      -> retrieve the json for logs bound by the start time
+	//                      and end time supplied in the query string
+	// logs/files/       -> lists available log files
+	// logs/files/{file} -> fetches contents of named log
+	statusLocalLogKeyPrefix       = statusLocalKeyPrefix + "log/"
+	statusLocalLogKeyFilePrefix   = statusLocalLogKeyPrefix + "files/"
+	statusLocalLogKeyFilePattern  = statusLocalLogKeyFilePrefix + ":file"
+	statusLocalLogKeyLevelPattern = statusLocalLogKeyPrefix + ":level"
 
 	// statusLocalStacksKey exposes stack traces of running goroutines.
 	statusLocalStacksKey = statusLocalKeyPrefix + "stacks"
@@ -102,8 +105,12 @@ func newStatusServer(db *client.DB, gossip *gossip.Gossip) *statusServer {
 	server.router.GET(statusKeyPrefix, server.handleClusterStatus)
 	server.router.GET(statusGossipKeyPrefix, server.handleGossipStatus)
 	server.router.GET(statusLocalKeyPrefix, server.handleLocalStatus)
-	server.router.GET(statusLocalLogKeyPrefix, server.handleLocalLogs)
-	server.router.GET(statusLocalLogKeyPattern, server.handleLocalLog)
+
+	server.router.GET(statusLocalLogKeyPrefix, server.handleLocalLog)
+	server.router.GET(statusLocalLogKeyFilePrefix, server.handleLocalLogFiles)
+	server.router.GET(statusLocalLogKeyFilePattern, server.handleLocalLogFile)
+	server.router.GET(statusLocalLogKeyLevelPattern, server.handleLocalLog)
+
 	server.router.GET(statusLocalStacksKey, server.handleLocalStacks)
 	server.router.GET(statusNodeKeyPrefix, server.handleNodesStatus)
 	server.router.GET(statusNodeKeyPattern, server.handleNodeStatus)
@@ -165,7 +172,7 @@ func (s *statusServer) handleLocalStatus(w http.ResponseWriter, r *http.Request,
 }
 
 // handleLocalLogs handles GET requests for list of available logs.
-func (s *statusServer) handleLocalLogs(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+func (s *statusServer) handleLocalLogFiles(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	log.Flush()
 	logFiles, err := log.ListLogFiles()
 	if err != nil {
@@ -187,7 +194,7 @@ func (s *statusServer) handleLocalLogs(w http.ResponseWriter, r *http.Request, _
 // handleLocalLog handles GET requests for a single log. If no filename is
 // available, it returns 404. The log contents are returned in structured
 // format as JSON.
-func (s *statusServer) handleLocalLog(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func (s *statusServer) handleLocalLogFile(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	log.Flush()
 	file := ps.ByName("file")
 	reader, err := log.GetLogReader(file, false /* !allowAbsolute */)
@@ -213,6 +220,62 @@ func (s *statusServer) handleLocalLog(w http.ResponseWriter, r *http.Request, ps
 		entries = append(entries, entry)
 	}
 
+	b, contentType, err := util.MarshalResponse(r, entries, []util.EncodingType{util.JSONEncoding})
+	if err != nil {
+		log.Error(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Write(b)
+}
+
+// ***** DESCRIPTION HERE
+func (s *statusServer) handleLocalLog(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	log.Flush()
+	/*	var level Level
+		switch strings.toLower(ps.ByName("type")) {
+		case "warning":
+			{
+				level = WARNING
+			}
+		case "error":
+			{
+				level = ERROR
+			}
+		case "fatal":
+			{
+				level = FATAL
+			}
+		default:
+			{
+				level = INFO
+			}
+		}
+	*/
+	file := ps.ByName("file")
+	reader, err := log.GetLogReader(file, false)
+	if reader == nil || err != nil {
+		log.Errorf("unable to open log file %s: %s", file, err)
+		http.NotFound(w, r)
+		return
+	}
+	defer reader.Close()
+
+	entry := proto.LogEntry{}
+	var entries []proto.LogEntry
+	decoder := log.NewEntryDecoder(reader)
+	for {
+		if err := decoder.Decode(&entry); err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Error(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		entries = append(entries, entry)
+	}
 	b, contentType, err := util.MarshalResponse(r, entries, []util.EncodingType{util.JSONEncoding})
 	if err != nil {
 		log.Error(err)
