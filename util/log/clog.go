@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/proto"
+	"github.com/cockroachdb/cockroach/util"
 	"github.com/cockroachdb/cockroach/util/encoding"
 	gogoproto "github.com/gogo/protobuf/proto"
 )
@@ -969,7 +970,11 @@ func (sb *syncBuffer) rotateFile(now time.Time) error {
 		}
 	}
 	var err error
-	sb.file, _, err = create(severityName[sb.sev], now)
+	level, levelFound := LevelFromString(severityName[sb.sev])
+	if !levelFound {
+		return util.Errorf("could not parse severity to level")
+	}
+	sb.file, _, err = create(level, now)
 	sb.nbytes = 0
 	if err != nil {
 		return err

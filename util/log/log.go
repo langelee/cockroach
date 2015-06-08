@@ -17,9 +17,14 @@
 
 package log
 
-import "golang.org/x/net/context"
+import (
+	"strings"
+
+	"golang.org/x/net/context"
+)
 
 // Log Level Enum.
+// TODO(Bram): combine this with clog.severity, and rename severity to level.
 type Level int
 
 const (
@@ -38,6 +43,21 @@ var levels = [...]string{
 
 func (level Level) String() string {
 	return levels[level]
+}
+
+func LevelFromString(level string) (Level, bool) {
+	switch strings.ToUpper(strings.TrimSpace(level)) {
+	case "FATAL":
+		return FATAL, true
+	case "ERROR":
+		return ERROR, true
+	case "WARNING":
+		return WARNING, true
+	case "INFO":
+		return INFO, true
+	default:
+		return INFO, false
+	}
 }
 
 func init() {

@@ -14,10 +14,12 @@
 // for names of contributors.
 //
 // Author: Shawn Morel (shawn@strangemonad.com)
+// Author: Bram Gruneir (bram@cockroachlabs.com)
 
 package server
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"runtime"
@@ -51,13 +53,22 @@ const (
 	statusLocalKeyPrefix = statusKeyPrefix + "local/"
 
 	// statusLocalLogKeyPrefix exposes a list of log files for the node.
-	// logs -> lists available log files
-	// logs/ -> lists available log files
-	// logs/{file} -> fetches contents of named log
-	statusLocalLogKeyPrefix = statusLocalKeyPrefix + "logs/"
+	// logfiles -> lists available log files
+	// logfiles/ -> lists available log files
+	// logfiles/{file} -> fetches contents of named log
+	statusLocalLogFileKeyPrefix = statusLocalKeyPrefix + "logfiles/"
+	// statusLocalLogFileKeyPattern is the pattern to match
+	// logfiles/{file}
+	statusLocalLogFileKeyPattern = statusLocalLogFileKeyPrefix + ":file"
+
+	// statusLocalLogKeyPrefix exposes a list of logs for the node.
+	// logs -> equivalent to logs/info
+	// logs/ -> equivalent to logs/info
+	// logs/{level} -> returns the logs for the provided level and higher
+	statusLocalLogKeyPrefix = statusLocalKeyPrefix + "log/"
 	// statusLocalLogKeyPattern is the pattern to match
-	// logs/{file}
-	statusLocalLogKeyPattern = statusLocalLogKeyPrefix + ":file"
+	// logs/{level}
+	statusLocalLogKeyPattern = statusLocalLogKeyPrefix + ":level"
 
 	// statusLocalStacksKey exposes stack traces of running goroutines.
 	statusLocalStacksKey = statusLocalKeyPrefix + "stacks"
@@ -102,7 +113,9 @@ func newStatusServer(db *client.DB, gossip *gossip.Gossip) *statusServer {
 	server.router.GET(statusKeyPrefix, server.handleClusterStatus)
 	server.router.GET(statusGossipKeyPrefix, server.handleGossipStatus)
 	server.router.GET(statusLocalKeyPrefix, server.handleLocalStatus)
-	server.router.GET(statusLocalLogKeyPrefix, server.handleLocalLogs)
+	server.router.GET(statusLocalLogFileKeyPrefix, server.handleLocalLogFiles)
+	server.router.GET(statusLocalLogFileKeyPattern, server.handleLocalLogFile)
+	server.router.GET(statusLocalLogKeyPrefix, server.handleLocalLog)
 	server.router.GET(statusLocalLogKeyPattern, server.handleLocalLog)
 	server.router.GET(statusLocalStacksKey, server.handleLocalStacks)
 	server.router.GET(statusNodeKeyPrefix, server.handleNodesStatus)
@@ -164,8 +177,8 @@ func (s *statusServer) handleLocalStatus(w http.ResponseWriter, r *http.Request,
 	w.Write(b)
 }
 
-// handleLocalLogs handles GET requests for list of available logs.
-func (s *statusServer) handleLocalLogs(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// handleLocalLogFiles handles GET requests for list of available logs.
+func (s *statusServer) handleLocalLogFiles(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	log.Flush()
 	logFiles, err := log.ListLogFiles()
 	if err != nil {
@@ -184,10 +197,10 @@ func (s *statusServer) handleLocalLogs(w http.ResponseWriter, r *http.Request, _
 	w.Write(b)
 }
 
-// handleLocalLog handles GET requests for a single log. If no filename is
+// handleLocalLogFile handles GET requests for a single log. If no filename is
 // available, it returns 404. The log contents are returned in structured
 // format as JSON.
-func (s *statusServer) handleLocalLog(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func (s *statusServer) handleLocalLogFile(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	log.Flush()
 	file := ps.ByName("file")
 	reader, err := log.GetLogReader(file, false /* !allowAbsolute */)
@@ -212,6 +225,25 @@ func (s *statusServer) handleLocalLog(w http.ResponseWriter, r *http.Request, ps
 		}
 		entries = append(entries, entry)
 	}
+
+	b, contentType, err := util.MarshalResponse(r, entries, []util.EncodingType{util.JSONEncoding})
+	if err != nil {
+		log.Error(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Write(b)
+}
+
+// !!!!! Description Here
+func (s *statusServer) handleLocalLog(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	log.Flush()
+	level, _ := log.LevelFromString(ps.ByName("level"))
+	fmt.Printf("!!!!! Level:%s\n", level.String())
+
+	//	entry := proto.LogEntry{}
+	var entries []proto.LogEntry
 
 	b, contentType, err := util.MarshalResponse(r, entries, []util.EncodingType{util.JSONEncoding})
 	if err != nil {

@@ -297,7 +297,7 @@ func startServerAndGetStatus(t *testing.T, keyPrefix string) (*TestServer, []byt
 	return ts, body
 }
 
-func TestStatusLocalLog(t *testing.T) {
+func TestStatusLocalLogFile(t *testing.T) {
 	dir, err := ioutil.TempDir("", "local_log_test")
 	if err != nil {
 		t.Fatal(err)
@@ -309,7 +309,7 @@ func TestStatusLocalLog(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	ts, body := startServerAndGetStatus(t, statusLocalLogKeyPrefix)
+	ts, body := startServerAndGetStatus(t, statusLocalLogFileKeyPrefix)
 	defer ts.Stop()
 
 	type logsWrapper struct {
@@ -329,7 +329,7 @@ func TestStatusLocalLog(t *testing.T) {
 	}
 
 	// Log an error which we expect to show up on every log file.
-	log.Errorf("TestStatusLocalLog test message")
+	log.Errorf("TestStatusLocalLogFile test message")
 
 	// Fetch a each listed log directly.
 	type logWrapper struct {
@@ -337,14 +337,14 @@ func TestStatusLocalLog(t *testing.T) {
 	}
 	// Check each individual log can be fetched and is non-empty.
 	for _, log := range logs.Data {
-		body = getRequest(t, ts, fmt.Sprintf("%s%s", statusLocalLogKeyPrefix, log.Name))
+		body = getRequest(t, ts, fmt.Sprintf("%s%s", statusLocalLogFileKeyPrefix, log.Name))
 		logW := logWrapper{}
 		if err := json.Unmarshal(body, &logW); err != nil {
 			t.Fatal(err)
 		}
 		var found bool
 		for i := len(logW.Data) - 1; i >= 0; i-- {
-			if logW.Data[i].Format == "TestStatusLocalLog test message" {
+			if logW.Data[i].Format == "TestStatusLocalLogFile test message" {
 				found = true
 				break
 			}
